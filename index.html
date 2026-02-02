@@ -22,14 +22,25 @@
     button { padding: 10px 14px; border: 0; border-radius: 10px; font-size: 16px; cursor: pointer; }
     button.primary { background: #111; color: #fff; }
     button.secondary { background: #eee; }
+    button.danger { background: #b00020; color: #fff; }
     button:disabled { opacity: .6; cursor: not-allowed; }
-    .status { margin-top: 10px; padding: 10px; border-radius: 10px; background: #f7f7f7; }
-    .ok { background: #e9f9ef; }
-    .err { background: #fdecec; }
     canvas { width: 100%; height: 180px; border: 1px solid #ccc; border-radius: 10px; touch-action: none; background: #fff; }
     .small { font-size: 12px; color: #555; }
     .consentBox { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; }
     .consentBox input { width: auto; margin-top: 4px; }
+
+    /* Overlay */
+    #overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); color:#fff; z-index:9999; padding:24px; }
+    #overlayCard { max-width:720px; margin:0 auto; background:rgba(20,20,20,.95); border-radius:16px; padding:18px; }
+    #overlayBody { white-space:pre-wrap; }
+
+    /* PIN modal */
+    #pinModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:10000; padding:24px; }
+    #pinCard { max-width:520px; margin:0 auto; background:#fff; color:#111; border-radius:16px; padding:18px; }
+    #pinTitle { font-size:18px; font-weight:800; margin-bottom:8px; }
+    #pinHint { font-size:13px; color:#444; margin-bottom:12px; }
+    #pinInput { font-size:18px; letter-spacing:3px; text-align:center; }
+    #pinError { display:none; margin-top:10px; background:#fdecec; color:#7a0000; padding:10px; border-radius:10px; }
   </style>
 </head>
 
@@ -123,25 +134,40 @@
     <button class="secondary" id="resetBtn" type="button">Reset form</button>
   </div>
 
-  <div id="status" class="status" style="display:none;"></div>
-
   <!-- Fullscreen overlay -->
-  <div id="overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); color:#fff; z-index:9999; padding:24px;">
-    <div style="max-width:720px; margin:0 auto; background:rgba(20,20,20,.95); border-radius:16px; padding:18px;">
+  <div id="overlay">
+    <div id="overlayCard">
       <div id="overlayTitle" style="font-size:18px; font-weight:700; margin-bottom:10px;">Loading…</div>
-      <div id="overlayBody" style="font-size:16px; line-height:1.4; white-space:pre-wrap;">Please wait…</div>
+      <div id="overlayBody" style="font-size:16px; line-height:1.4;">Please wait…</div>
       <div class="btns" id="overlayBtns" style="margin-top:14px; display:none;">
         <button class="primary" id="overlayOkBtn" type="button">OK</button>
       </div>
     </div>
   </div>
 
+  <!-- PIN modal (shown AFTER validation) -->
+  <div id="pinModal">
+    <div id="pinCard">
+      <div id="pinTitle">Staff confirmation</div>
+      <div id="pinHint">Enter staff PIN to finalize the order.</div>
+
+      <label for="pinInput" id="pinLabel">Staff PIN *</label>
+      <input id="pinInput" inputmode="numeric" autocomplete="off" placeholder="••••••" />
+
+      <div class="btns" style="margin-top:12px;">
+        <button class="primary" id="pinConfirmBtn" type="button">Confirm & Send</button>
+        <button class="secondary" id="pinCancelBtn" type="button">Cancel</button>
+      </div>
+
+      <div id="pinError"></div>
+    </div>
+  </div>
+
 <script>
   // ==========================
-  // CONFIG — set these two!
+  // CONFIG — set WEB_APP_URL only
   // ==========================
   const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyapKkADZm-ad5qk8XiSKU8dLm2pM1MUIacuVehCC0xzOMbJQXuIt0RZ-XSLfw3T1HSmg/exec";
-  const SHARED_SECRET = "CtH3zs0dIYgxUGPo";
 
   // Edit your products here:
   const PRODUCTS = [
@@ -193,7 +219,6 @@
       submit: "Submit order",
       reset: "Reset form",
 
-      // overlay
       loadingTitle: "Submitting order…",
       loadingBody: "Please wait. Do not close this page.",
       successTitle: "Order submitted",
@@ -201,6 +226,14 @@
       customerConfirmation: "Please take a screenshot of this confirmation as your proof of order.\nA confirmation email will be sent to the provided email address.",
       errorTitle: "Submission failed",
       errorBody: "The order could not be sent. Please check internet connection and try again.",
+
+      // PIN modal
+      pinTitle: "Staff confirmation",
+      pinHint: "Enter staff PIN to finalize the order.",
+      pinLabel: "Staff PIN *",
+      pinConfirm: "Confirm & Send",
+      pinCancel: "Cancel",
+      pinRequired: "Staff PIN is required.",
 
       // validation
       errFullName: "Full name is required.",
@@ -213,7 +246,8 @@
       errNoItems: "Select at least one product quantity > 0.",
       errConsent: "Consent checkbox must be checked.",
       errSignature: "Signature is required.",
-      errQtyHigh: (name, max) => `Quantity too high for ${name}. Max is ${max}.`
+      errQtyHigh: (name, max) => `Quantity too high for ${name}. Max is ${max}.`,
+      errQtyNeg: "Quantity cannot be negative."
     },
 
     de: {
@@ -255,6 +289,14 @@
       errorTitle: "Senden fehlgeschlagen",
       errorBody: "Die Bestellung konnte nicht gesendet werden. Bitte Internet prüfen und erneut versuchen.",
 
+      // PIN modal
+      pinTitle: "Mitarbeiter-Bestätigung",
+      pinHint: "Mitarbeiter-PIN eingeben, um die Bestellung abzuschließen.",
+      pinLabel: "Mitarbeiter-PIN *",
+      pinConfirm: "Bestätigen & Senden",
+      pinCancel: "Abbrechen",
+      pinRequired: "Mitarbeiter-PIN ist erforderlich.",
+
       errFullName: "Name ist erforderlich.",
       errEmail: "E-Mail ist erforderlich.",
       errPhone: "Telefon ist erforderlich.",
@@ -265,7 +307,8 @@
       errNoItems: "Bitte mindestens ein Produkt mit Menge > 0 auswählen.",
       errConsent: "Bitte Zustimmung aktivieren.",
       errSignature: "Unterschrift ist erforderlich.",
-      errQtyHigh: (name, max) => `Menge zu hoch für ${name}. Maximal ${max}.`
+      errQtyHigh: (name, max) => `Menge zu hoch für ${name}. Maximal ${max}.`,
+      errQtyNeg: "Menge darf nicht negativ sein."
     }
   };
 
@@ -280,14 +323,11 @@
     document.getElementById("langLabel").textContent = t("langLabel");
 
     document.getElementById("legendCustomer").textContent = t("customerLegend");
-    document.getElementById("legendAddress").textContent = t("addressLegend");
-    document.getElementById("legendProducts").textContent = t("productsLegend");
-    document.getElementById("legendConsent").textContent = t("consentLegend");
-
     document.getElementById("lblFullName").textContent = t("fullName");
     document.getElementById("lblEmail").textContent = t("email");
     document.getElementById("lblPhone").textContent = t("phone");
 
+    document.getElementById("legendAddress").textContent = t("addressLegend");
     document.getElementById("lblStreet").textContent = t("street");
     document.getElementById("lblCity").textContent = t("city");
     document.getElementById("lblZip").textContent = t("zip");
@@ -298,6 +338,7 @@
     document.getElementById("thProduct").textContent = t("productCol");
     document.getElementById("thQty").textContent = t("qtyCol");
 
+    document.getElementById("legendConsent").textContent = t("consentLegend");
     document.getElementById("consentHeadline").textContent = t("consentHeadline");
     document.getElementById("lblSig").textContent = t("signature");
     document.getElementById("clearSig").textContent = t("clearSignature");
@@ -306,6 +347,13 @@
 
     document.getElementById("submitBtn").textContent = t("submit");
     document.getElementById("resetBtn").textContent = t("reset");
+
+    // PIN modal strings
+    document.getElementById("pinTitle").textContent = t("pinTitle");
+    document.getElementById("pinHint").textContent = t("pinHint");
+    document.getElementById("pinLabel").textContent = t("pinLabel");
+    document.getElementById("pinConfirmBtn").textContent = t("pinConfirm");
+    document.getElementById("pinCancelBtn").textContent = t("pinCancel");
 
     document.getElementById("consentText").textContent = CONSENT_TEXT_BY_LANG[LANG];
     document.title = t("title");
@@ -381,9 +429,10 @@
   canvas.addEventListener("touchstart", startDraw, { passive: false });
   canvas.addEventListener("touchmove", draw, { passive: false });
   window.addEventListener("touchend", endDraw, { passive: false });
+
+  // Extra: hard-block scroll/zoom while signing (iOS)
   canvas.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
   canvas.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
-
 
   document.getElementById("clearSig").addEventListener("click", () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -391,42 +440,82 @@
   });
 
   // ==========================
-  // Fullscreen overlay helpers
+  // Overlay helpers
   // ==========================
-  function showOverlay(type, title, body, showOk = false) {
-    const o = document.getElementById("overlay");
+  function showOverlay(title, body, showOk = false) {
     document.getElementById("overlayTitle").textContent = title;
     document.getElementById("overlayBody").textContent = body;
-
-    const btns = document.getElementById("overlayBtns");
-    btns.style.display = showOk ? "flex" : "none";
-
-    o.style.display = "block";
+    document.getElementById("overlayBtns").style.display = showOk ? "flex" : "none";
+    document.getElementById("overlay").style.display = "block";
   }
 
   function hideOverlay() {
     document.getElementById("overlay").style.display = "none";
   }
 
-  document.getElementById("overlayOkBtn").addEventListener("click", () => {
-    hideOverlay();
+  document.getElementById("overlayOkBtn").addEventListener("click", () => hideOverlay());
+
+  // ==========================
+  // PIN modal helpers
+  // ==========================
+  function openPinModal() {
+    const pinModal = document.getElementById("pinModal");
+    const pinInput = document.getElementById("pinInput");
+    const pinError = document.getElementById("pinError");
+
+    pinError.style.display = "none";
+    pinError.textContent = "";
+    pinInput.value = "";
+
+    pinModal.style.display = "block";
+    setTimeout(() => pinInput.focus(), 50);
+  }
+
+  function closePinModal() {
+    document.getElementById("pinModal").style.display = "none";
+  }
+
+  function showPinError(msg) {
+    const pinError = document.getElementById("pinError");
+    pinError.textContent = msg;
+    pinError.style.display = "block";
+  }
+
+  // We'll store validated payload here until PIN is entered
+  let pendingPayload = null;
+
+  // ==========================
+  // Submit flow:
+  // validate -> ask PIN -> send
+  // ==========================
+  document.getElementById("submitBtn").addEventListener("click", () => {
+    const payloadNoPin = buildPayloadWithoutPin();
+    const err = validatePayload(payloadNoPin);
+    if (err) return showOverlay(t("errorTitle"), err, true);
+
+    pendingPayload = payloadNoPin;
+    openPinModal();
   });
 
-  // ==========================
-  // Submit
-  // ==========================
-  document.getElementById("submitBtn").addEventListener("click", async () => {
-    hideStatus();
+  document.getElementById("pinCancelBtn").addEventListener("click", () => {
+    pendingPayload = null;
+    closePinModal();
+  });
 
-    const payload = buildPayload();
-    const err = validatePayload(payload);
-    if (err) return showOverlay("error", t("errorTitle"), err, true);
+  document.getElementById("pinConfirmBtn").addEventListener("click", async () => {
+    const pin = String(document.getElementById("pinInput").value || "").trim();
+    if (!pin) return showPinError(t("pinRequired"));
+    if (!pendingPayload) return showPinError("No pending order.");
+
+    closePinModal();
+
+    // Add PIN only now (after validation)
+    const payload = { ...pendingPayload, pin };
 
     setBusy(true);
-    showOverlay("loading", t("loadingTitle"), t("loadingBody"), false);
+    showOverlay(t("loadingTitle"), t("loadingBody"), false);
 
     try {
-      // IMPORTANT: use text/plain to avoid CORS preflight issues with Apps Script
       const res = await fetch(WEB_APP_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -439,28 +528,31 @@
       }
 
       showOverlay(
-        "success",
         t("successTitle"),
         `${t("successBody")}\n${json.orderId}\n\n${t("customerConfirmation")}`,
         true
       );
 
-      // optional: reset after success
-      // resetForm();
+      pendingPayload = null;
 
     } catch (e) {
-      showOverlay("error", t("errorTitle"), `${t("errorBody")}\n\n${e.message}`, true);
+      showOverlay(t("errorTitle"), `${t("errorBody")}\n\n${e.message}`, true);
     } finally {
       setBusy(false);
     }
   });
 
-  document.getElementById("resetBtn").addEventListener("click", () => {
-    resetForm();
-    showOverlay("success", "OK", (LANG === "de" ? "Formular zurückgesetzt." : "Form reset."), true);
+  // Enter key in PIN input triggers confirm
+  document.getElementById("pinInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("pinConfirmBtn").click();
   });
 
-  function buildPayload() {
+  document.getElementById("resetBtn").addEventListener("click", () => {
+    resetForm();
+    showOverlay("OK", (LANG === "de" ? "Formular zurückgesetzt." : "Form reset."), true);
+  });
+
+  function buildPayloadWithoutPin() {
     const items = [...document.querySelectorAll("#productsTable input[type=number]")]
       .map(inp => {
         const idx = Number(inp.dataset.idx);
@@ -468,7 +560,6 @@
       });
 
     return {
-      secret: SHARED_SECRET,
       lang: LANG,
       customer: {
         fullName: val("fullName"),
@@ -498,7 +589,6 @@
 
   function validatePayload(p) {
     if (!WEB_APP_URL || WEB_APP_URL.includes("PASTE_YOUR_DEPLOYMENT_ID")) return "Set WEB_APP_URL in the HTML first.";
-    if (!SHARED_SECRET || SHARED_SECRET.includes("PASTE_YOUR_SECRET")) return "Set SHARED_SECRET in the HTML first.";
 
     if (!p.customer.fullName) return t("errFullName");
     if (!p.customer.email) return t("errEmail");
@@ -513,7 +603,7 @@
 
     for (let i = 0; i < p.items.length; i++) {
       const qty = p.items[i].qty;
-      if (qty < 0) return (LANG === "de" ? "Menge darf nicht negativ sein." : "Quantity cannot be negative.");
+      if (qty < 0) return t("errQtyNeg");
       if (qty > PRODUCTS[i].max) return t("errQtyHigh", PRODUCTS[i].name, PRODUCTS[i].max);
     }
 
@@ -534,6 +624,7 @@
     [...document.querySelectorAll("#productsTable input[type=number]")].forEach(inp => inp.value = 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     hasInk = false;
+    pendingPayload = null;
   }
 
   function val(id) {
@@ -545,20 +636,6 @@
     document.getElementById("submitBtn").disabled = b;
     document.getElementById("resetBtn").disabled = b;
     document.getElementById("langSelect").disabled = b;
-  }
-
-  function showStatus(msg, isErr) {
-    const s = document.getElementById("status");
-    s.style.display = "block";
-    s.classList.toggle("err", !!isErr);
-    s.classList.toggle("ok", !isErr);
-    s.textContent = msg;
-  }
-  function hideStatus() {
-    const s = document.getElementById("status");
-    s.style.display = "none";
-    s.textContent = "";
-    s.classList.remove("err","ok");
   }
 
   function escapeHtml(str) {
@@ -575,7 +652,6 @@
     applyLanguage();
   });
 
-  // Initial render
   applyLanguage();
 </script>
 </body>
