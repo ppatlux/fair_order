@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fair Order Form</title>
+  <style>
+    html, body { overscroll-behavior: none; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 16px; max-width: 820px; }
+    h1 { font-size: 22px; margin: 0; }
+    fieldset { border: 1px solid #ddd; border-radius: 10px; padding: 12px; margin: 12px 0; }
+    legend { padding: 0 8px; color: #333; }
+    label { display: block; margin: 10px 0 4px; font-weight: 600; }
+    input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #eee; padding: 10px 6px; text-align: left; vertical-align: top; }
+    th { font-size: 14px; color: #444; }
+    .qty { width: 110px; }
+    .btns { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    button { padding: 10px 14px; border: 0; border-radius: 10px; font-size: 16px; cursor: pointer; }
+    button.primary { background: #111; color: #fff; }
+    button.secondary { background: #eee; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .status { margin-top: 10px; padding: 10px; border-radius: 10px; background: #f7f7f7; }
+    .ok { background: #e9f9ef; }
+    .err { background: #fdecec; }
+    canvas { width: 100%; height: 180px; border: 1px solid #ccc; border-radius: 10px; touch-action: none; background: #fff; }
+    .small { font-size: 12px; color: #555; }
+    .consentBox { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; }
+    .consentBox input { width: auto; margin-top: 4px; }
+  </style>
+</head>
+
+<body>
+  <div style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+    <h1 id="titleText">Fair Order Form</h1>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <span class="small" id="langLabel">Language:</span>
+      <select id="langSelect" style="width:auto; padding:8px 10px;">
+        <option value="en">English</option>
+        <option value="de">Deutsch</option>
+      </select>
+    </div>
+  </div>
+  <div class="small" id="subtitleText">Works on phone/iPad/computer. Requires internet to email/store the order.</div>
+
+  <fieldset>
+    <legend id="legendCustomer">Customer</legend>
+    <label id="lblFullName">Full name *</label>
+    <input id="fullName" autocomplete="name" required />
+
+    <div class="row">
+      <div>
+        <label id="lblEmail">Email *</label>
+        <input id="email" type="email" autocomplete="email" required />
+      </div>
+      <div>
+        <label id="lblPhone">Phone *</label>
+        <input id="phone" autocomplete="tel" required />
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend id="legendAddress">Postal address</legend>
+    <label id="lblStreet">Street + house number *</label>
+    <input id="street" autocomplete="street-address" required />
+
+    <div class="row">
+      <div>
+        <label id="lblCity">City *</label>
+        <input id="city" autocomplete="address-level2" required />
+      </div>
+      <div>
+        <label id="lblZip">ZIP / Postal code *</label>
+        <input id="zip" autocomplete="postal-code" required />
+      </div>
+    </div>
+
+    <label id="lblCountry">Country *</label>
+    <input id="country" autocomplete="country-name" value="Czech Republic" required />
+  </fieldset>
+
+  <fieldset>
+    <legend id="legendProducts">Products</legend>
+    <div class="small" id="productsHelp">Set quantity per product. Leave 0 if not ordering.</div>
+    <table id="productsTable">
+      <thead>
+        <tr>
+          <th id="thProduct">Product</th>
+          <th class="qty" id="thQty">Qty</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </fieldset>
+
+  <fieldset>
+    <legend id="legendConsent">Consent + Signature</legend>
+
+    <div class="consentBox">
+      <input id="consentChecked" type="checkbox" />
+      <div>
+        <div><b id="consentHeadline">I place this order and confirm the provided details are correct.</b></div>
+        <div class="small" id="consentText"></div>
+      </div>
+    </div>
+
+    <label id="lblSig" style="margin-top:12px;">Signature *</label>
+    <canvas id="sig" width="1200" height="360"></canvas>
+    <div class="btns">
+      <button class="secondary" id="clearSig" type="button">Clear signature</button>
+    </div>
+
+    <label id="lblNotes">Notes (optional)</label>
+    <textarea id="notes" rows="3" placeholder="Pickup notes, special instructions..."></textarea>
+  </fieldset>
+
+  <div class="btns">
+    <button class="primary" id="submitBtn" type="button">Submit order</button>
+    <button class="secondary" id="resetBtn" type="button">Reset form</button>
+  </div>
+
+  <div id="status" class="status" style="display:none;"></div>
+
+  <!-- Fullscreen overlay -->
+  <div id="overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); color:#fff; z-index:9999; padding:24px;">
+    <div style="max-width:720px; margin:0 auto; background:rgba(20,20,20,.95); border-radius:16px; padding:18px;">
+      <div id="overlayTitle" style="font-size:18px; font-weight:700; margin-bottom:10px;">Loading…</div>
+      <div id="overlayBody" style="font-size:16px; line-height:1.4; white-space:pre-wrap;">Please wait…</div>
+      <div class="btns" id="overlayBtns" style="margin-top:14px; display:none;">
+        <button class="primary" id="overlayOkBtn" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ==========================
+  // CONFIG — set these two!
+  // ==========================
+  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyapKkADZm-ad5qk8XiSKU8dLm2pM1MUIacuVehCC0xzOMbJQXuIt0RZ-XSLfw3T1HSmg/exec";
+  const SHARED_SECRET = "CtH3zs0dIYgxUGPo";
+
+  // Edit your products here:
+  const PRODUCTS = [
+    { name: "Product A (unique)", max: 10 },
+    { name: "Product B", max: 25 },
+    { name: "Product C", max: 5 }
+  ];
+
+  // Consent text per language (sent to backend and stored + emailed)
+  const CONSENT_TEXT_BY_LANG = {
+    en: "By checking the box and signing, you confirm this is a proof of order. You consent to processing your personal data for order fulfillment.",
+    de: "Mit dem Ankreuzen und Unterschreiben bestätigst du die Bestellung als Nachweis. Du stimmst der Verarbeitung deiner personenbezogenen Daten zur Bestellabwicklung zu."
+  };
+
+  // ==========================
+  // Language (EN/DE)
+  // ==========================
+  let LANG = "en";
+
+  const I18N = {
+    en: {
+      title: "Fair Order Form",
+      subtitle: "Works on phone/iPad/computer. Requires internet to email/store the order.",
+      langLabel: "Language:",
+
+      customerLegend: "Customer",
+      fullName: "Full name *",
+      email: "Email *",
+      phone: "Phone *",
+
+      addressLegend: "Postal address",
+      street: "Street + house number *",
+      city: "City *",
+      zip: "ZIP / Postal code *",
+      country: "Country *",
+
+      productsLegend: "Products",
+      productsHelp: "Set quantity per product. Leave 0 if not ordering.",
+      productCol: "Product",
+      qtyCol: "Qty",
+
+      consentLegend: "Consent + Signature",
+      consentHeadline: "I place this order and confirm the provided details are correct.",
+      signature: "Signature *",
+      clearSignature: "Clear signature",
+      notes: "Notes (optional)",
+      notesPh: "Pickup notes, special instructions...",
+
+      submit: "Submit order",
+      reset: "Reset form",
+
+      // overlay
+      loadingTitle: "Submitting order…",
+      loadingBody: "Please wait. Do not close this page.",
+      successTitle: "Order submitted",
+      successBody: "Thank you! Your order was recorded.\nOrder ID:",
+      customerConfirmation: "Please take a screenshot of this confirmation as your proof of order.\nA confirmation email will be sent to the provided email address.",
+      errorTitle: "Submission failed",
+      errorBody: "The order could not be sent. Please check internet connection and try again.",
+
+      // validation
+      errFullName: "Full name is required.",
+      errEmail: "Email is required.",
+      errPhone: "Phone is required.",
+      errStreet: "Street is required.",
+      errCity: "City is required.",
+      errZip: "ZIP is required.",
+      errCountry: "Country is required.",
+      errNoItems: "Select at least one product quantity > 0.",
+      errConsent: "Consent checkbox must be checked.",
+      errSignature: "Signature is required.",
+      errQtyHigh: (name, max) => `Quantity too high for ${name}. Max is ${max}.`
+    },
+
+    de: {
+      title: "Bestellformular Messe",
+      subtitle: "Funktioniert auf Handy/iPad/Computer. Internet erforderlich, um die Bestellung zu speichern/zu mailen.",
+      langLabel: "Sprache:",
+
+      customerLegend: "Kundendaten",
+      fullName: "Vollständiger Name *",
+      email: "E-Mail *",
+      phone: "Telefon *",
+
+      addressLegend: "Postadresse",
+      street: "Straße + Hausnummer *",
+      city: "Stadt *",
+      zip: "PLZ *",
+      country: "Land *",
+
+      productsLegend: "Produkte",
+      productsHelp: "Menge pro Produkt wählen. 0 = nicht bestellen.",
+      productCol: "Produkt",
+      qtyCol: "Menge",
+
+      consentLegend: "Zustimmung + Unterschrift",
+      consentHeadline: "Ich gebe diese Bestellung auf und bestätige, dass die Angaben korrekt sind.",
+      signature: "Unterschrift *",
+      clearSignature: "Unterschrift löschen",
+      notes: "Notizen (optional)",
+      notesPh: "Abholhinweise, besondere Wünsche…",
+
+      submit: "Bestellung senden",
+      reset: "Zurücksetzen",
+
+      loadingTitle: "Bestellung wird gesendet…",
+      loadingBody: "Bitte warten. Diese Seite nicht schließen.",
+      successTitle: "Bestellung gesendet",
+      successBody: "Danke! Deine Bestellung wurde erfasst.\nBestellnummer:",
+      customerConfirmation: "Bitte mache einen Screenshot dieser Bestätigung als Nachweis.\nEine Bestätigungs-E-Mail wird an die angegebene Adresse gesendet.",
+      errorTitle: "Senden fehlgeschlagen",
+      errorBody: "Die Bestellung konnte nicht gesendet werden. Bitte Internet prüfen und erneut versuchen.",
+
+      errFullName: "Name ist erforderlich.",
+      errEmail: "E-Mail ist erforderlich.",
+      errPhone: "Telefon ist erforderlich.",
+      errStreet: "Straße ist erforderlich.",
+      errCity: "Stadt ist erforderlich.",
+      errZip: "PLZ ist erforderlich.",
+      errCountry: "Land ist erforderlich.",
+      errNoItems: "Bitte mindestens ein Produkt mit Menge > 0 auswählen.",
+      errConsent: "Bitte Zustimmung aktivieren.",
+      errSignature: "Unterschrift ist erforderlich.",
+      errQtyHigh: (name, max) => `Menge zu hoch für ${name}. Maximal ${max}.`
+    }
+  };
+
+  function t(key, ...args) {
+    const v = I18N[LANG][key];
+    return (typeof v === "function") ? v(...args) : (v ?? key);
+  }
+
+  function applyLanguage() {
+    document.getElementById("titleText").textContent = t("title");
+    document.getElementById("subtitleText").textContent = t("subtitle");
+    document.getElementById("langLabel").textContent = t("langLabel");
+
+    document.getElementById("legendCustomer").textContent = t("customerLegend");
+    document.getElementById("legendAddress").textContent = t("addressLegend");
+    document.getElementById("legendProducts").textContent = t("productsLegend");
+    document.getElementById("legendConsent").textContent = t("consentLegend");
+
+    document.getElementById("lblFullName").textContent = t("fullName");
+    document.getElementById("lblEmail").textContent = t("email");
+    document.getElementById("lblPhone").textContent = t("phone");
+
+    document.getElementById("lblStreet").textContent = t("street");
+    document.getElementById("lblCity").textContent = t("city");
+    document.getElementById("lblZip").textContent = t("zip");
+    document.getElementById("lblCountry").textContent = t("country");
+
+    document.getElementById("legendProducts").textContent = t("productsLegend");
+    document.getElementById("productsHelp").textContent = t("productsHelp");
+    document.getElementById("thProduct").textContent = t("productCol");
+    document.getElementById("thQty").textContent = t("qtyCol");
+
+    document.getElementById("consentHeadline").textContent = t("consentHeadline");
+    document.getElementById("lblSig").textContent = t("signature");
+    document.getElementById("clearSig").textContent = t("clearSignature");
+    document.getElementById("lblNotes").textContent = t("notes");
+    document.getElementById("notes").placeholder = t("notesPh");
+
+    document.getElementById("submitBtn").textContent = t("submit");
+    document.getElementById("resetBtn").textContent = t("reset");
+
+    document.getElementById("consentText").textContent = CONSENT_TEXT_BY_LANG[LANG];
+    document.title = t("title");
+  }
+
+  // ==========================
+  // Build product table
+  // ==========================
+  const tbody = document.querySelector("#productsTable tbody");
+  PRODUCTS.forEach((p, idx) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>
+        <div><b>${escapeHtml(p.name)}</b></div>
+        <div class="small">Available (informational): ${p.max}</div>
+      </td>
+      <td class="qty">
+        <input type="number" min="0" max="${p.max}" step="1" value="0" data-idx="${idx}" />
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // ==========================
+  // Signature pad (simple)
+  // ==========================
+  const canvas = document.getElementById("sig");
+  const ctx = canvas.getContext("2d");
+  ctx.lineWidth = 4;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  let drawing = false;
+  let hasInk = false;
+
+  function getPos(evt) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+    const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+    return {
+      x: (clientX - rect.left) * (canvas.width / rect.width),
+      y: (clientY - rect.top) * (canvas.height / rect.height)
+    };
+  }
+
+  function startDraw(evt) {
+    evt.preventDefault();
+    drawing = true;
+    const p = getPos(evt);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+  }
+
+  function draw(evt) {
+    if (!drawing) return;
+    evt.preventDefault();
+    const p = getPos(evt);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    hasInk = true;
+  }
+
+  function endDraw(evt) {
+    if (!drawing) return;
+    evt.preventDefault();
+    drawing = false;
+  }
+
+  canvas.addEventListener("mousedown", startDraw);
+  canvas.addEventListener("mousemove", draw);
+  window.addEventListener("mouseup", endDraw);
+
+  canvas.addEventListener("touchstart", startDraw, { passive: false });
+  canvas.addEventListener("touchmove", draw, { passive: false });
+  window.addEventListener("touchend", endDraw, { passive: false });
+  canvas.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+  canvas.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+
+
+  document.getElementById("clearSig").addEventListener("click", () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hasInk = false;
+  });
+
+  // ==========================
+  // Fullscreen overlay helpers
+  // ==========================
+  function showOverlay(type, title, body, showOk = false) {
+    const o = document.getElementById("overlay");
+    document.getElementById("overlayTitle").textContent = title;
+    document.getElementById("overlayBody").textContent = body;
+
+    const btns = document.getElementById("overlayBtns");
+    btns.style.display = showOk ? "flex" : "none";
+
+    o.style.display = "block";
+  }
+
+  function hideOverlay() {
+    document.getElementById("overlay").style.display = "none";
+  }
+
+  document.getElementById("overlayOkBtn").addEventListener("click", () => {
+    hideOverlay();
+  });
+
+  // ==========================
+  // Submit
+  // ==========================
+  document.getElementById("submitBtn").addEventListener("click", async () => {
+    hideStatus();
+
+    const payload = buildPayload();
+    const err = validatePayload(payload);
+    if (err) return showOverlay("error", t("errorTitle"), err, true);
+
+    setBusy(true);
+    showOverlay("loading", t("loadingTitle"), t("loadingBody"), false);
+
+    try {
+      // IMPORTANT: use text/plain to avoid CORS preflight issues with Apps Script
+      const res = await fetch(WEB_APP_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!json || !json.ok) {
+        throw new Error((json && json.error) ? json.error : "Submission failed");
+      }
+
+      showOverlay(
+        "success",
+        t("successTitle"),
+        `${t("successBody")}\n${json.orderId}\n\n${t("customerConfirmation")}`,
+        true
+      );
+
+      // optional: reset after success
+      // resetForm();
+
+    } catch (e) {
+      showOverlay("error", t("errorTitle"), `${t("errorBody")}\n\n${e.message}`, true);
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  document.getElementById("resetBtn").addEventListener("click", () => {
+    resetForm();
+    showOverlay("success", "OK", (LANG === "de" ? "Formular zurückgesetzt." : "Form reset."), true);
+  });
+
+  function buildPayload() {
+    const items = [...document.querySelectorAll("#productsTable input[type=number]")]
+      .map(inp => {
+        const idx = Number(inp.dataset.idx);
+        return { name: PRODUCTS[idx].name, qty: Number(inp.value || 0) };
+      });
+
+    return {
+      secret: SHARED_SECRET,
+      lang: LANG,
+      customer: {
+        fullName: val("fullName"),
+        email: val("email"),
+        phone: val("phone")
+      },
+      address: {
+        street: val("street"),
+        city: val("city"),
+        zip: val("zip"),
+        country: val("country")
+      },
+      items,
+      consent: {
+        checked: document.getElementById("consentChecked").checked,
+        text: CONSENT_TEXT_BY_LANG[LANG]
+      },
+      signature: {
+        dataUrl: canvas.toDataURL("image/png")
+      },
+      notes: val("notes"),
+      meta: {
+        userAgent: navigator.userAgent
+      }
+    };
+  }
+
+  function validatePayload(p) {
+    if (!WEB_APP_URL || WEB_APP_URL.includes("PASTE_YOUR_DEPLOYMENT_ID")) return "Set WEB_APP_URL in the HTML first.";
+    if (!SHARED_SECRET || SHARED_SECRET.includes("PASTE_YOUR_SECRET")) return "Set SHARED_SECRET in the HTML first.";
+
+    if (!p.customer.fullName) return t("errFullName");
+    if (!p.customer.email) return t("errEmail");
+    if (!p.customer.phone) return t("errPhone");
+    if (!p.address.street) return t("errStreet");
+    if (!p.address.city) return t("errCity");
+    if (!p.address.zip) return t("errZip");
+    if (!p.address.country) return t("errCountry");
+
+    const picked = p.items.filter(it => it.qty > 0);
+    if (picked.length === 0) return t("errNoItems");
+
+    for (let i = 0; i < p.items.length; i++) {
+      const qty = p.items[i].qty;
+      if (qty < 0) return (LANG === "de" ? "Menge darf nicht negativ sein." : "Quantity cannot be negative.");
+      if (qty > PRODUCTS[i].max) return t("errQtyHigh", PRODUCTS[i].name, PRODUCTS[i].max);
+    }
+
+    if (!p.consent.checked) return t("errConsent");
+    if (!hasInk) return t("errSignature");
+
+    return null;
+  }
+
+  function resetForm() {
+    ["fullName","email","phone","street","city","zip","country","notes"].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (id === "country") el.value = "Czech Republic";
+      else el.value = "";
+    });
+    document.getElementById("consentChecked").checked = false;
+    [...document.querySelectorAll("#productsTable input[type=number]")].forEach(inp => inp.value = 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hasInk = false;
+  }
+
+  function val(id) {
+    const el = document.getElementById(id);
+    return el ? String(el.value || "").trim() : "";
+  }
+
+  function setBusy(b) {
+    document.getElementById("submitBtn").disabled = b;
+    document.getElementById("resetBtn").disabled = b;
+    document.getElementById("langSelect").disabled = b;
+  }
+
+  function showStatus(msg, isErr) {
+    const s = document.getElementById("status");
+    s.style.display = "block";
+    s.classList.toggle("err", !!isErr);
+    s.classList.toggle("ok", !isErr);
+    s.textContent = msg;
+  }
+  function hideStatus() {
+    const s = document.getElementById("status");
+    s.style.display = "none";
+    s.textContent = "";
+    s.classList.remove("err","ok");
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, (m) => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+  }
+
+  // Init language selector
+  const langSelect = document.getElementById("langSelect");
+  langSelect.value = LANG;
+  langSelect.addEventListener("change", () => {
+    LANG = langSelect.value;
+    applyLanguage();
+  });
+
+  // Initial render
+  applyLanguage();
+</script>
+</body>
+</html>
