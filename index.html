@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Fair Order Form</title>
   <style>
+    *, *::before, *::after { box-sizing: border-box; }
     html, body { overscroll-behavior: none; }
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 16px; max-width: 820px; }
     h1 { font-size: 22px; margin: 0; }
@@ -28,15 +29,45 @@
     .small { font-size: 12px; color: #555; }
     .consentBox { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; }
     .consentBox input { width: auto; margin-top: 4px; }
+    .checkRow { display:flex; gap:10px; align-items:flex-start; margin-top:10px; }
+    .checkRow input { width:auto; margin-top:4px; }
 
-    /* Overlay */
-    #overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); color:#fff; z-index:9999; padding:24px; }
-    #overlayCard { max-width:720px; margin:0 auto; background:rgba(20,20,20,.95); border-radius:16px; padding:18px; }
-    #overlayBody { white-space:pre-wrap; }
+    #overlay {
+      display:none;
+      position:fixed; inset:0;
+      background:rgba(0,0,0,.75);
+      color:#fff;
+      z-index:9999;
+      padding: 18px;
+      overflow:auto;
+    }
+    #overlayCard {
+      width: min(720px, calc(100vw - 36px));
+      margin: 0 auto;
+      background:rgba(20,20,20,.95);
+      border-radius:16px;
+      padding:18px;
+      overflow:hidden;
+    }
+    #overlayBody { white-space:pre-wrap; overflow-wrap:anywhere; }
 
-    /* PIN modal */
-    #pinModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:10000; padding:24px; }
-    #pinCard { max-width:520px; margin:0 auto; background:#fff; color:#111; border-radius:16px; padding:18px; }
+    #pinModal {
+      display:none;
+      position:fixed; inset:0;
+      background:rgba(0,0,0,.75);
+      z-index:10000;
+      padding: 18px;
+      overflow:auto;
+    }
+    #pinCard {
+      width: min(520px, calc(100vw - 36px));
+      margin: 0 auto;
+      background:#fff;
+      color:#111;
+      border-radius:16px;
+      padding:18px;
+      overflow:hidden;
+    }
     #pinTitle { font-size:18px; font-weight:800; margin-bottom:8px; }
     #pinHint { font-size:13px; color:#444; margin-bottom:12px; }
     #pinInput { font-size:18px; letter-spacing:3px; text-align:center; }
@@ -75,7 +106,7 @@
   </fieldset>
 
   <fieldset>
-    <legend id="legendAddress">Postal address</legend>
+    <legend id="legendDelivery">Delivery address</legend>
     <label id="lblStreet">Street + house number *</label>
     <input id="street" autocomplete="street-address" required />
 
@@ -92,6 +123,35 @@
 
     <label id="lblCountry">Country *</label>
     <input id="country" autocomplete="country-name" value="Czech Republic" required />
+
+    <div class="checkRow">
+      <input id="billingDifferent" type="checkbox" />
+      <div>
+        <div><b id="billingDifferentLabel">Billing address is different</b></div>
+        <div class="small" id="billingDifferentHelp">Enable if invoice/billing address differs from delivery.</div>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset id="billingFieldset" style="display:none;">
+    <legend id="legendBilling">Billing address</legend>
+
+    <label id="lblBillStreet">Street + house number *</label>
+    <input id="billStreet" autocomplete="street-address" />
+
+    <div class="row">
+      <div>
+        <label id="lblBillCity">City *</label>
+        <input id="billCity" autocomplete="address-level2" />
+      </div>
+      <div>
+        <label id="lblBillZip">ZIP / Postal code *</label>
+        <input id="billZip" autocomplete="postal-code" />
+      </div>
+    </div>
+
+    <label id="lblBillCountry">Country *</label>
+    <input id="billCountry" autocomplete="country-name" value="Czech Republic" />
   </fieldset>
 
   <fieldset>
@@ -134,7 +194,6 @@
     <button class="secondary" id="resetBtn" type="button">Reset form</button>
   </div>
 
-  <!-- Fullscreen overlay -->
   <div id="overlay">
     <div id="overlayCard">
       <div id="overlayTitle" style="font-size:18px; font-weight:700; margin-bottom:10px;">Loading…</div>
@@ -145,7 +204,6 @@
     </div>
   </div>
 
-  <!-- PIN modal (shown AFTER validation) -->
   <div id="pinModal">
     <div id="pinCard">
       <div id="pinTitle">Staff confirmation</div>
@@ -169,22 +227,17 @@
   // ==========================
   const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyapKkADZm-ad5qk8XiSKU8dLm2pM1MUIacuVehCC0xzOMbJQXuIt0RZ-XSLfw3T1HSmg/exec";
 
-  // Edit your products here:
   const PRODUCTS = [
     { name: "Product A (unique)", max: 10 },
     { name: "Product B", max: 25 },
     { name: "Product C", max: 5 }
   ];
 
-  // Consent text per language (sent to backend and stored + emailed)
   const CONSENT_TEXT_BY_LANG = {
     en: "By checking the box and signing, you confirm this is a proof of order. You consent to processing your personal data for order fulfillment.",
     de: "Mit dem Ankreuzen und Unterschreiben bestätigst du die Bestellung als Nachweis. Du stimmst der Verarbeitung deiner personenbezogenen Daten zur Bestellabwicklung zu."
   };
 
-  // ==========================
-  // Language (EN/DE)
-  // ==========================
   let LANG = "en";
 
   const I18N = {
@@ -198,11 +251,15 @@
       email: "Email *",
       phone: "Phone *",
 
-      addressLegend: "Postal address",
+      deliveryLegend: "Delivery address",
+      billingLegend: "Billing address",
       street: "Street + house number *",
       city: "City *",
       zip: "ZIP / Postal code *",
       country: "Country *",
+
+      billingDifferentLabel: "Billing address is different",
+      billingDifferentHelp: "Enable if invoice/billing address differs from delivery.",
 
       productsLegend: "Products",
       productsHelp: "Set quantity per product. Leave 0 if not ordering.",
@@ -227,7 +284,6 @@
       errorTitle: "Submission failed",
       errorBody: "The order could not be sent. Please check internet connection and try again.",
 
-      // PIN modal
       pinTitle: "Staff confirmation",
       pinHint: "Enter staff PIN to finalize the order.",
       pinLabel: "Staff PIN *",
@@ -235,7 +291,6 @@
       pinCancel: "Cancel",
       pinRequired: "Staff PIN is required.",
 
-      // validation
       errFullName: "Full name is required.",
       errEmail: "Email is required.",
       errPhone: "Phone is required.",
@@ -243,6 +298,12 @@
       errCity: "City is required.",
       errZip: "ZIP is required.",
       errCountry: "Country is required.",
+
+      errBillStreet: "Billing street is required.",
+      errBillCity: "Billing city is required.",
+      errBillZip: "Billing ZIP is required.",
+      errBillCountry: "Billing country is required.",
+
       errNoItems: "Select at least one product quantity > 0.",
       errConsent: "Consent checkbox must be checked.",
       errSignature: "Signature is required.",
@@ -260,11 +321,15 @@
       email: "E-Mail *",
       phone: "Telefon *",
 
-      addressLegend: "Postadresse",
+      deliveryLegend: "Lieferadresse",
+      billingLegend: "Rechnungsadresse",
       street: "Straße + Hausnummer *",
       city: "Stadt *",
       zip: "PLZ *",
       country: "Land *",
+
+      billingDifferentLabel: "Rechnungsadresse ist abweichend",
+      billingDifferentHelp: "Aktivieren, wenn Rechnungsadresse von Lieferadresse abweicht.",
 
       productsLegend: "Produkte",
       productsHelp: "Menge pro Produkt wählen. 0 = nicht bestellen.",
@@ -289,7 +354,6 @@
       errorTitle: "Senden fehlgeschlagen",
       errorBody: "Die Bestellung konnte nicht gesendet werden. Bitte Internet prüfen und erneut versuchen.",
 
-      // PIN modal
       pinTitle: "Mitarbeiter-Bestätigung",
       pinHint: "Mitarbeiter-PIN eingeben, um die Bestellung abzuschließen.",
       pinLabel: "Mitarbeiter-PIN *",
@@ -304,6 +368,12 @@
       errCity: "Stadt ist erforderlich.",
       errZip: "PLZ ist erforderlich.",
       errCountry: "Land ist erforderlich.",
+
+      errBillStreet: "Rechnungsstraße ist erforderlich.",
+      errBillCity: "Rechnungsstadt ist erforderlich.",
+      errBillZip: "Rechnungs-PLZ ist erforderlich.",
+      errBillCountry: "Rechnungsland ist erforderlich.",
+
       errNoItems: "Bitte mindestens ein Produkt mit Menge > 0 auswählen.",
       errConsent: "Bitte Zustimmung aktivieren.",
       errSignature: "Unterschrift ist erforderlich.",
@@ -327,11 +397,21 @@
     document.getElementById("lblEmail").textContent = t("email");
     document.getElementById("lblPhone").textContent = t("phone");
 
-    document.getElementById("legendAddress").textContent = t("addressLegend");
+    document.getElementById("legendDelivery").textContent = t("deliveryLegend");
+    document.getElementById("legendBilling").textContent = t("billingLegend");
+
     document.getElementById("lblStreet").textContent = t("street");
     document.getElementById("lblCity").textContent = t("city");
     document.getElementById("lblZip").textContent = t("zip");
     document.getElementById("lblCountry").textContent = t("country");
+
+    document.getElementById("lblBillStreet").textContent = t("street");
+    document.getElementById("lblBillCity").textContent = t("city");
+    document.getElementById("lblBillZip").textContent = t("zip");
+    document.getElementById("lblBillCountry").textContent = t("country");
+
+    document.getElementById("billingDifferentLabel").textContent = t("billingDifferentLabel");
+    document.getElementById("billingDifferentHelp").textContent = t("billingDifferentHelp");
 
     document.getElementById("legendProducts").textContent = t("productsLegend");
     document.getElementById("productsHelp").textContent = t("productsHelp");
@@ -348,7 +428,6 @@
     document.getElementById("submitBtn").textContent = t("submit");
     document.getElementById("resetBtn").textContent = t("reset");
 
-    // PIN modal strings
     document.getElementById("pinTitle").textContent = t("pinTitle");
     document.getElementById("pinHint").textContent = t("pinHint");
     document.getElementById("pinLabel").textContent = t("pinLabel");
@@ -359,9 +438,7 @@
     document.title = t("title");
   }
 
-  // ==========================
   // Build product table
-  // ==========================
   const tbody = document.querySelector("#productsTable tbody");
   PRODUCTS.forEach((p, idx) => {
     const tr = document.createElement("tr");
@@ -377,9 +454,22 @@
     tbody.appendChild(tr);
   });
 
-  // ==========================
-  // Signature pad (simple)
-  // ==========================
+  // Billing toggle
+  const billingDifferentEl = document.getElementById("billingDifferent");
+  const billingFieldset = document.getElementById("billingFieldset");
+
+  billingDifferentEl.addEventListener("change", () => {
+    const on = billingDifferentEl.checked;
+    billingFieldset.style.display = on ? "block" : "none";
+    if (!on) {
+      ["billStreet","billCity","billZip","billCountry"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = (id === "billCountry") ? "Czech Republic" : "";
+      });
+    }
+  });
+
+  // Signature pad
   const canvas = document.getElementById("sig");
   const ctx = canvas.getContext("2d");
   ctx.lineWidth = 4;
@@ -430,7 +520,6 @@
   canvas.addEventListener("touchmove", draw, { passive: false });
   window.addEventListener("touchend", endDraw, { passive: false });
 
-  // Extra: hard-block scroll/zoom while signing (iOS)
   canvas.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
   canvas.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
 
@@ -439,25 +528,17 @@
     hasInk = false;
   });
 
-  // ==========================
   // Overlay helpers
-  // ==========================
   function showOverlay(title, body, showOk = false) {
     document.getElementById("overlayTitle").textContent = title;
     document.getElementById("overlayBody").textContent = body;
     document.getElementById("overlayBtns").style.display = showOk ? "flex" : "none";
     document.getElementById("overlay").style.display = "block";
   }
-
-  function hideOverlay() {
-    document.getElementById("overlay").style.display = "none";
-  }
-
+  function hideOverlay() { document.getElementById("overlay").style.display = "none"; }
   document.getElementById("overlayOkBtn").addEventListener("click", () => hideOverlay());
 
-  // ==========================
   // PIN modal helpers
-  // ==========================
   function openPinModal() {
     const pinModal = document.getElementById("pinModal");
     const pinInput = document.getElementById("pinInput");
@@ -470,29 +551,19 @@
     pinModal.style.display = "block";
     setTimeout(() => pinInput.focus(), 50);
   }
-
-  function closePinModal() {
-    document.getElementById("pinModal").style.display = "none";
-  }
-
+  function closePinModal() { document.getElementById("pinModal").style.display = "none"; }
   function showPinError(msg) {
     const pinError = document.getElementById("pinError");
     pinError.textContent = msg;
     pinError.style.display = "block";
   }
 
-  // We'll store validated payload here until PIN is entered
   let pendingPayload = null;
 
-  // ==========================
-  // Submit flow:
-  // validate -> ask PIN -> send
-  // ==========================
   document.getElementById("submitBtn").addEventListener("click", () => {
     const payloadNoPin = buildPayloadWithoutPin();
     const err = validatePayload(payloadNoPin);
     if (err) return showOverlay(t("errorTitle"), err, true);
-
     pendingPayload = payloadNoPin;
     openPinModal();
   });
@@ -508,8 +579,6 @@
     if (!pendingPayload) return showPinError("No pending order.");
 
     closePinModal();
-
-    // Add PIN only now (after validation)
     const payload = { ...pendingPayload, pin };
 
     setBusy(true);
@@ -523,9 +592,7 @@
       });
 
       const json = await res.json().catch(() => null);
-      if (!json || !json.ok) {
-        throw new Error((json && json.error) ? json.error : "Submission failed");
-      }
+      if (!json || !json.ok) throw new Error((json && json.error) ? json.error : "Submission failed");
 
       showOverlay(
         t("successTitle"),
@@ -534,7 +601,6 @@
       );
 
       pendingPayload = null;
-
     } catch (e) {
       showOverlay(t("errorTitle"), `${t("errorBody")}\n\n${e.message}`, true);
     } finally {
@@ -542,7 +608,6 @@
     }
   });
 
-  // Enter key in PIN input triggers confirm
   document.getElementById("pinInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter") document.getElementById("pinConfirmBtn").click();
   });
@@ -559,6 +624,8 @@
         return { name: PRODUCTS[idx].name, qty: Number(inp.value || 0) };
       });
 
+    const billingDifferent = document.getElementById("billingDifferent").checked;
+
     return {
       lang: LANG,
       customer: {
@@ -566,11 +633,20 @@
         email: val("email"),
         phone: val("phone")
       },
-      address: {
+      deliveryAddress: {
         street: val("street"),
         city: val("city"),
         zip: val("zip"),
         country: val("country")
+      },
+      billing: {
+        different: billingDifferent,
+        address: billingDifferent ? {
+          street: val("billStreet"),
+          city: val("billCity"),
+          zip: val("billZip"),
+          country: val("billCountry")
+        } : null
       },
       items,
       consent: {
@@ -588,15 +664,24 @@
   }
 
   function validatePayload(p) {
-    if (!WEB_APP_URL || WEB_APP_URL.includes("PASTE_YOUR_DEPLOYMENT_ID")) return "Set WEB_APP_URL in the HTML first.";
+    if (!WEB_APP_URL) return "Set WEB_APP_URL in the HTML first.";
 
     if (!p.customer.fullName) return t("errFullName");
     if (!p.customer.email) return t("errEmail");
     if (!p.customer.phone) return t("errPhone");
-    if (!p.address.street) return t("errStreet");
-    if (!p.address.city) return t("errCity");
-    if (!p.address.zip) return t("errZip");
-    if (!p.address.country) return t("errCountry");
+
+    if (!p.deliveryAddress.street) return t("errStreet");
+    if (!p.deliveryAddress.city) return t("errCity");
+    if (!p.deliveryAddress.zip) return t("errZip");
+    if (!p.deliveryAddress.country) return t("errCountry");
+
+    if (p.billing && p.billing.different) {
+      const b = p.billing.address || {};
+      if (!b.street) return t("errBillStreet");
+      if (!b.city) return t("errBillCity");
+      if (!b.zip) return t("errBillZip");
+      if (!b.country) return t("errBillCountry");
+    }
 
     const picked = p.items.filter(it => it.qty > 0);
     if (picked.length === 0) return t("errNoItems");
@@ -614,12 +699,15 @@
   }
 
   function resetForm() {
-    ["fullName","email","phone","street","city","zip","country","notes"].forEach(id => {
+    ["fullName","email","phone","street","city","zip","country","notes","billStreet","billCity","billZip","billCountry"].forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
-      if (id === "country") el.value = "Czech Republic";
+      if (id === "country" || id === "billCountry") el.value = "Czech Republic";
       else el.value = "";
     });
+    document.getElementById("billingDifferent").checked = false;
+    billingFieldset.style.display = "none";
+
     document.getElementById("consentChecked").checked = false;
     [...document.querySelectorAll("#productsTable input[type=number]")].forEach(inp => inp.value = 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -644,7 +732,6 @@
     }[m]));
   }
 
-  // Init language selector
   const langSelect = document.getElementById("langSelect");
   langSelect.value = LANG;
   langSelect.addEventListener("change", () => {
